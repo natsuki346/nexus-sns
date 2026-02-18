@@ -14,16 +14,18 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // ========== データベース（メモリ） ==========
-const users = [
+let users = [
   {
     id: 'user1',
     name: '田中太郎',
     username: '@tarou',
     phase: '起業志望',
+    mbti: 'ENFP',
     bio: 'スタートアップに挑戦中。技術好きな起業志望者です',
     location: '東京都渋谷区',
     latitude: 35.6595,
     longitude: 139.7004,
+    locationPublic: true,
     followers: ['user2', 'user3'],
     following: ['user2', 'user3'],
     avatar: '👨‍💼'
@@ -33,10 +35,12 @@ const users = [
     name: '鈴木花子',
     username: '@hanako',
     phase: 'スタートアップ運営',
+    mbti: 'INTJ',
     bio: 'EdTech企業のCEO。投資家との出会いを求めています',
     location: '東京都新宿区',
     latitude: 35.6762,
     longitude: 139.7394,
+    locationPublic: true,
     followers: ['user1'],
     following: ['user1', 'user3'],
     avatar: '👩‍💼'
@@ -46,10 +50,12 @@ const users = [
     name: '佐藤就活太',
     username: '@shukatsutarou',
     phase: '就活生',
+    mbti: 'ENFP',
     bio: '2026年卒。スタートアップ志向のエンジニア志望',
     location: '東京都渋谷区',
     latitude: 35.6558,
     longitude: 139.7016,
+    locationPublic: true,
     followers: ['user1', 'user2'],
     following: ['user1', 'user2'],
     avatar: '👨‍🎓'
@@ -59,10 +65,12 @@ const users = [
     name: '山田投資家',
     username: '@yamada_investor',
     phase: '投資家',
+    mbti: 'INTJ',
     bio: 'シードからシリーズAのスタートアップに投資。新しい挑戦者募集中',
     location: '東京都港区',
     latitude: 35.6469,
     longitude: 139.7407,
+    locationPublic: true,
     followers: [],
     following: ['user2'],
     avatar: '💼'
@@ -73,16 +81,28 @@ let posts = [
   {
     id: 'post1',
     authorId: 'user2',
-    content: '今日はプロダクト改善のミーティングでした。ユーザーの声を聞くことが本当に大事ですね。',
+    postType: 'business',
+    authorType: 'company',
+    content: '【新卒採用】EdTech企業でエンジニア2名募集！',
     timestamp: '2026-02-18T14:30:00',
     location: '東京都新宿区',
-    hashtags: ['#EdTech', '#プロダクト', '#ユーザーファースト'],
+    hashtags: ['#新卒採用', '#テック企業', '#EdTech'],
+    eventInfo: {
+      type: 'internship',
+      startDate: '2026-03-01',
+      endDate: '2026-03-31',
+      location: '東京都新宿区',
+      salary: '時給1500円',
+      applications: ['user3']
+    },
     likes: ['user1', 'user3'],
     likeCount: 2
   },
   {
     id: 'post2',
     authorId: 'user1',
+    postType: 'personal',
+    authorType: 'individual',
     content: 'NEXUSのようなプラットフォームがあれば、起業志望者同士のつながりが生まれるのに！',
     timestamp: '2026-02-18T12:15:00',
     location: '東京都渋谷区',
@@ -93,6 +113,8 @@ let posts = [
   {
     id: 'post3',
     authorId: 'user3',
+    postType: 'personal',
+    authorType: 'individual',
     content: '就活とスタートアップの両立って難しいな。でも成長できる環境を求めています。',
     timestamp: '2026-02-18T10:00:00',
     location: '東京都渋谷区',
@@ -103,6 +125,8 @@ let posts = [
   {
     id: 'post4',
     authorId: 'user4',
+    postType: 'business',
+    authorType: 'individual',
     content: 'シード期のスタートアップ創業者さん、ぜひお話ししましょう。今年は特に注目しています。',
     timestamp: '2026-02-18T09:00:00',
     location: '東京都港区',
@@ -120,27 +144,20 @@ let messages = [
   { id: 'dm5', senderId: 'user4', recipientId: 'user2', message: 'プロダクト拝見させてもらいたいです', timestamp: '2026-02-18T13:00:00', isRead: true }
 ];
 
-// ========== おすすめスポット（モックデータ） ==========
-const recommendedPlaces = {
-  '東京都渋谷区': [
-    { name: 'スターバックス 渋谷駅前店', type: 'カフェ', rating: 4.5, coupon: '10%割引' },
-    { name: '渋谷ヒカリエ', type: 'コワーキング', rating: 4.7, coupon: '最初の1時間無料' },
-    { name: 'ラーメン横丁', type: 'レストラン', rating: 4.3, coupon: '500円割引' },
-    { name: 'The Ramen Yokocho', type: 'グルメ', rating: 4.4, coupon: 'ラーメン+ドリンク' }
-  ],
-  '東京都新宿区': [
-    { name: 'ネスカフェ 新宿店', type: 'カフェ', rating: 4.6, coupon: '15%割引' },
-    { name: 'WeWork 新宿', type: 'コワーキング', rating: 4.8, coupon: '最初の3時間無料' },
-    { name: 'ホテルグレイスリーホテルズ', type: 'レストラン', rating: 4.5, coupon: 'ランチセット20%割引' },
-    { name: '新宿御苑', type: 'スポット', rating: 4.4, coupon: '入園料割引' }
-  ],
-  '東京都港区': [
-    { name: 'ブルーボトルコーヒー六本木', type: 'カフェ', rating: 4.7, coupon: 'ドリンク無料' },
-    { name: 'WeWork 六本木', type: 'コワーキング', rating: 4.9, coupon: '初月50%割引' },
-    { name: 'テラスダイニング', type: 'レストラン', rating: 4.6, coupon: 'ディナー20%割引' },
-    { name: 'アークヒルズ', type: 'スポット', rating: 4.5, coupon: 'ショップ割引' }
-  ]
-};
+// グループチャット（新規追加）
+let groupChats = [
+  {
+    id: 'groupchat1',
+    name: '昨日の飲み会',
+    members: ['user1', 'user2', 'user3'],
+    messages: [
+      { id: 'gmsg1', senderId: 'user1', content: '楽しかったね！', timestamp: '2026-02-18T20:00:00', isRead: true },
+      { id: 'gmsg2', senderId: 'user2', content: '割り勘しましょう', timestamp: '2026-02-18T20:05:00', isRead: true },
+      { id: 'gmsg3', senderId: 'user3', content: '了解です', timestamp: '2026-02-18T20:10:00', isRead: false }
+    ],
+    createdAt: '2026-02-18T10:00:00'
+  }
+];
 
 // ========== キーワード抽出でハッシュタグ自動生成 ==========
 function generateHashtags(content, userPhase) {
@@ -180,16 +197,19 @@ function generateHashtags(content, userPhase) {
 
 // ========== API エンドポイント ==========
 
+// ユーザー取得
 app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
+// 投稿一覧取得
 app.get('/api/posts', (req, res) => {
   res.json(posts);
 });
 
+// 投稿作成
 app.post('/api/posts', (req, res) => {
-  const { authorId, content, location } = req.body;
+  const { authorId, content, location, postType } = req.body;
 
   if (!authorId || !content) {
     return res.status(400).json({ error: 'authorId and content required' });
@@ -202,6 +222,8 @@ app.post('/api/posts', (req, res) => {
   const newPost = {
     id: 'post' + (posts.length + 1),
     authorId,
+    postType: postType || 'personal',
+    authorType: 'individual',
     content,
     timestamp: new Date().toISOString(),
     location: postLocation,
@@ -214,6 +236,7 @@ app.post('/api/posts', (req, res) => {
   res.json(newPost);
 });
 
+// いいね機能
 app.post('/api/posts/:postId/like', (req, res) => {
   const { postId } = req.params;
   const { userId } = req.body;
@@ -234,10 +257,12 @@ app.post('/api/posts/:postId/like', (req, res) => {
   res.json(post);
 });
 
+// メッセージ取得
 app.get('/api/messages', (req, res) => {
   res.json(messages);
 });
 
+// メッセージ送信
 app.post('/api/messages', (req, res) => {
   const { senderId, recipientId, message } = req.body;
 
@@ -258,6 +283,54 @@ app.post('/api/messages', (req, res) => {
   res.json(newMsg);
 });
 
+// グループチャット取得（新規）
+app.get('/api/groupchats', (req, res) => {
+  res.json(groupChats);
+});
+
+// グループチャット作成（新規）
+app.post('/api/groupchats', (req, res) => {
+  const { name, members } = req.body;
+
+  if (!name || !members || members.length < 2) {
+    return res.status(400).json({ error: 'name and at least 2 members required' });
+  }
+
+  const newGroupChat = {
+    id: 'groupchat' + (groupChats.length + 1),
+    name,
+    members,
+    messages: [],
+    createdAt: new Date().toISOString()
+  };
+
+  groupChats.push(newGroupChat);
+  res.json(newGroupChat);
+});
+
+// グループチャットにメッセージ送信（新規）
+app.post('/api/groupchats/:groupChatId/messages', (req, res) => {
+  const { groupChatId } = req.params;
+  const { senderId, content } = req.body;
+
+  const groupChat = groupChats.find(g => g.id === groupChatId);
+  if (!groupChat) {
+    return res.status(404).json({ error: 'GroupChat not found' });
+  }
+
+  const newMsg = {
+    id: 'gmsg' + (groupChat.messages.length + 1),
+    senderId,
+    content,
+    timestamp: new Date().toISOString(),
+    isRead: false
+  };
+
+  groupChat.messages.push(newMsg);
+  res.json(newMsg);
+});
+
+// メッセージを既読にする
 app.post('/api/messages/:msgId/read', (req, res) => {
   const { msgId } = req.params;
 
@@ -270,6 +343,7 @@ app.post('/api/messages/:msgId/read', (req, res) => {
   res.json(msg);
 });
 
+// フォロー機能
 app.post('/api/users/:userId/follow', (req, res) => {
   const { userId } = req.params;
   const { currentUserId } = req.body;
@@ -296,6 +370,23 @@ app.post('/api/users/:userId/follow', (req, res) => {
 app.get('/api/places/:location', (req, res) => {
   const { location } = req.params;
   const decodedLocation = decodeURIComponent(location);
+  
+  const recommendedPlaces = {
+    '東京都渋谷区': [
+      { name: 'スターバックス 渋谷駅前店', type: 'カフェ', rating: 4.5, coupon: '10%割引' },
+      { name: '渋谷ヒカリエ', type: 'コワーキング', rating: 4.7, coupon: '最初の1時間無料' },
+      { name: 'ラーメン横丁', type: 'レストラン', rating: 4.3, coupon: '500円割引' }
+    ],
+    '東京都新宿区': [
+      { name: 'ネスカフェ 新宿店', type: 'カフェ', rating: 4.6, coupon: '15%割引' },
+      { name: 'WeWork 新宿', type: 'コワーキング', rating: 4.8, coupon: '最初の3時間無料' }
+    ],
+    '東京都港区': [
+      { name: 'ブルーボトルコーヒー六本木', type: 'カフェ', rating: 4.7, coupon: 'ドリンク無料' },
+      { name: 'WeWork 六本木', type: 'コワーキング', rating: 4.9, coupon: '初月50%割引' }
+    ]
+  };
+
   const places = recommendedPlaces[decodedLocation] || [];
   res.json({ location: decodedLocation, places });
 });
@@ -309,15 +400,17 @@ app.get('/api/locations', (req, res) => {
     latitude: u.latitude,
     longitude: u.longitude,
     avatar: u.avatar,
-    phase: u.phase
+    phase: u.phase,
+    mbti: u.mbti
   }));
   res.json(locations);
 });
 
+// ステータスチェック
 app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'ok', 
-    message: 'NEXUS API is running with location features' 
+    message: 'NEXUS API is running - Phase 2 with Messenger & Business features' 
   });
 });
 
@@ -330,5 +423,5 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 NEXUS server running on http://localhost:${PORT}`);
-  console.log(`✨ Location features enabled`);
+  console.log(`✨ Phase 2: Messenger + Business features enabled`);
 });
