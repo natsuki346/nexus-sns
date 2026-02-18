@@ -1,9 +1,17 @@
 import express from 'express';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// 静的ファイルを serve
+app.use(express.static(__dirname));
 
 // ========== データベース（メモリ） ==========
 const users = [
@@ -119,35 +127,29 @@ function generateHashtags(content, userPhase) {
 
   const hashtags = [];
 
-  // フェーズベースのハッシュタグを追加
   if (phaseHashtags[userPhase]) {
     hashtags.push(...phaseHashtags[userPhase]);
   }
 
-  // コンテンツキーワードから自動抽出
   contentKeywords.forEach(({ word, tag }) => {
     if (content.includes(word)) {
       hashtags.push(tag);
     }
   });
 
-  // 重複を削除して、最大5個に制限
   return [...new Set(hashtags)].slice(0, 5);
 }
 
 // ========== API エンドポイント ==========
 
-// ユーザー取得
 app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
-// 投稿一覧取得
 app.get('/api/posts', (req, res) => {
   res.json(posts);
 });
 
-// 投稿作成（ハッシュタグ自動生成）
 app.post('/api/posts', (req, res) => {
   const { authorId, content } = req.body;
 
@@ -172,7 +174,6 @@ app.post('/api/posts', (req, res) => {
   res.json(newPost);
 });
 
-// いいね機能
 app.post('/api/posts/:postId/like', (req, res) => {
   const { postId } = req.params;
   const { userId } = req.body;
@@ -193,12 +194,10 @@ app.post('/api/posts/:postId/like', (req, res) => {
   res.json(post);
 });
 
-// メッセージ取得
 app.get('/api/messages', (req, res) => {
   res.json(messages);
 });
 
-// メッセージ送信
 app.post('/api/messages', (req, res) => {
   const { senderId, recipientId, message } = req.body;
 
@@ -219,7 +218,6 @@ app.post('/api/messages', (req, res) => {
   res.json(newMsg);
 });
 
-// メッセージを既読にする
 app.post('/api/messages/:msgId/read', (req, res) => {
   const { msgId } = req.params;
 
@@ -232,7 +230,6 @@ app.post('/api/messages/:msgId/read', (req, res) => {
   res.json(msg);
 });
 
-// フォロー機能
 app.post('/api/users/:userId/follow', (req, res) => {
   const { userId } = req.params;
   const { currentUserId } = req.body;
@@ -255,12 +252,16 @@ app.post('/api/users/:userId/follow', (req, res) => {
   res.json({ currentUser, targetUser });
 });
 
-// ステータスチェック
 app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'NEXUS API is running with keyword extraction hashtag generation (Free version)' 
   });
+});
+
+// SPA対応 - すべてのルートで index.html を返す
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'index.html'));
 });
 
 // ========== サーバー起動 ==========
