@@ -167,9 +167,11 @@
 
            useEffect(() => {
     fetchData();
-    // 3秒ごとの自動更新は削除（DM中は無効化）
+}, []);
+
+useEffect(() => {
     if (!selectedTalk && !selectedGroupChat) {
-        const interval = setInterval(fetchData, 3000);
+        const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }
 }, [selectedTalk, selectedGroupChat]);
