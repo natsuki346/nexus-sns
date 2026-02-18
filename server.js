@@ -1,17 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import Anthropic from '@anthropic-ai/sdk';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY
-});
 
 // ========== データベース（メモリ） ==========
 const users = [
@@ -104,32 +96,43 @@ let messages = [
   { id: 'dm5', senderId: 'user4', recipientId: 'user2', message: 'プロダクト拝見させてもらいたいです', timestamp: '2026-02-18T13:00:00', isRead: true }
 ];
 
-// ========== Claude API でハッシュタグ自動生成 ==========
-async function generateHashtagsWithClaude(content) {
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'user',
-          content: `以下の投稿内容に対して、適切な日本語ハッシュタグを3-5個提案してください。JSON形式で返してください。\n\n投稿内容:\n"${content}"\n\n返す形式:\n{"hashtags": ["#ハッシュタグ1", "#ハッシュタグ2", "#ハッシュタグ3"]}`
-        }
-      ]
-    });
+// ========== キーワード抽出でハッシュタグ自動生成 ==========
+function generateHashtags(content, userPhase) {
+  const phaseHashtags = {
+    '起業志望': ['#起業志望', '#スタートアップ', '#チャレンジャー'],
+    'スタートアップ運営': ['#起業家', '#CEO', '#共創募集'],
+    '就活生': ['#就活生', '#新卒', '#キャリア'],
+    '投資家': ['#投資家', '#シード期', '#VC']
+  };
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return parsed.hashtags || [];
-    }
-    return [];
-  } catch (error) {
-    console.error('Claude API error:', error);
-    return [];
+  const contentKeywords = [
+    { word: 'プロダクト', tag: '#プロダクト' },
+    { word: 'ユーザー', tag: '#ユーザーファースト' },
+    { word: '技術', tag: '#技術' },
+    { word: '成長', tag: '#成長' },
+    { word: 'EdTech', tag: '#EdTech' },
+    { word: 'NEXUS', tag: '#NEXUS' },
+    { word: 'ミーティング', tag: '#チームワーク' },
+    { word: '投資', tag: '#ファンドレイジング' },
+    { word: '就活', tag: '#キャリア開発' }
+  ];
+
+  const hashtags = [];
+
+  // フェーズベースのハッシュタグを追加
+  if (phaseHashtags[userPhase]) {
+    hashtags.push(...phaseHashtags[userPhase]);
   }
+
+  // コンテンツキーワードから自動抽出
+  contentKeywords.forEach(({ word, tag }) => {
+    if (content.includes(word)) {
+      hashtags.push(tag);
+    }
+  });
+
+  // 重複を削除して、最大5個に制限
+  return [...new Set(hashtags)].slice(0, 5);
 }
 
 // ========== API エンドポイント ==========
@@ -145,15 +148,15 @@ app.get('/api/posts', (req, res) => {
 });
 
 // 投稿作成（ハッシュタグ自動生成）
-app.post('/api/posts', async (req, res) => {
+app.post('/api/posts', (req, res) => {
   const { authorId, content } = req.body;
 
   if (!authorId || !content) {
     return res.status(400).json({ error: 'authorId and content required' });
   }
 
-  // Claude API でハッシュタグ生成
-  const hashtags = await generateHashtagsWithClaude(content);
+  const author = users.find(u => u.id === authorId);
+  const hashtags = generateHashtags(content, author.phase);
 
   const newPost = {
     id: 'post' + (posts.length + 1),
@@ -256,7 +259,7 @@ app.post('/api/users/:userId/follow', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'ok', 
-    message: 'NEXUS API is running with Claude AI hashtag generation' 
+    message: 'NEXUS API is running with keyword extraction hashtag generation (Free version)' 
   });
 });
 
@@ -264,5 +267,5 @@ app.get('/api/status', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 NEXUS server running on http://localhost:${PORT}`);
-  console.log(`✨ Claude API Integration: Hashtag generation enabled`);
+  console.log(`✨ Free Version: Keyword extraction hashtag generation enabled`);
 });
