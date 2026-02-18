@@ -165,11 +165,14 @@
             const [loading, setLoading] = useState(true);
             const messagesEndRef = useRef(null);
 
-            useEffect(() => {
-                fetchData();
-                const interval = setInterval(fetchData, 3000);
-                return () => clearInterval(interval);
-            }, []);
+           useEffect(() => {
+    fetchData();
+    // 3秒ごとの自動更新は削除（DM中は無効化）
+    if (!selectedTalk && !selectedGroupChat) {
+        const interval = setInterval(fetchData, 3000);
+        return () => clearInterval(interval);
+    }
+}, [selectedTalk, selectedGroupChat]);
 
             useEffect(() => {
                 scrollToBottom();
