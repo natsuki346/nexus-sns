@@ -185,33 +185,35 @@ useEffect(() => {
             };
 
             const fetchData = async () => {
-                try {
-                    const [usersRes, postsRes, messagesRes, groupChatsRes, locationsRes] = await Promise.all([
-                        fetch(`${API_BASE}/api/users`),
-                        fetch(`${API_BASE}/api/posts`),
-                        fetch(`${API_BASE}/api/messages`),
-                        fetch(`${API_BASE}/api/groupchats`),
-                        fetch(`${API_BASE}/api/locations`)
-                    ]);
+    const savedMessageContent = newMessageContent; // 入力を保存
+    try {
+        const [usersRes, postsRes, messagesRes, groupChatsRes, locationsRes] = await Promise.all([
+            fetch(`${API_BASE}/api/users`),
+            fetch(`${API_BASE}/api/posts`),
+            fetch(`${API_BASE}/api/messages`),
+            fetch(`${API_BASE}/api/groupchats`),
+            fetch(`${API_BASE}/api/locations`)
+        ]);
 
-                    const usersData = await usersRes.json();
-                    const postsData = await postsRes.json();
-                    const messagesData = await messagesRes.json();
-                    const groupChatsData = await groupChatsRes.json();
-                    const locationsData = await locationsRes.json();
+        const usersData = await usersRes.json();
+        const postsData = await postsRes.json();
+        const messagesData = await messagesRes.json();
+        const groupChatsData = await groupChatsRes.json();
+        const locationsData = await locationsRes.json();
 
-                    setUsers(usersData);
-                    setPosts(postsData);
-                    setMessages(messagesData);
-                    setGroupChats(groupChatsData);
-                    setLocations(locationsData);
-                    setLoading(false);
-                } catch (error) {
-                    console.error('Failed to fetch data:', error);
-                    setLoading(false);
-                }
-            };
-
+        setUsers(usersData);
+        setPosts(postsData);
+        setMessages(messagesData);
+        setGroupChats(groupChatsData);
+        setLocations(locationsData);
+        setNewMessageContent(savedMessageContent); // 入力を復元
+        setLoading(false);
+    } catch (error) {
+        console.error('Failed to fetch data:', error);
+        setNewMessageContent(savedMessageContent); // エラー時も復元
+        setLoading(false);
+    }
+};
             const fetchPlaces = async (location) => {
                 try {
                     const response = await fetch(`${API_BASE}/api/places/${encodeURIComponent(location)}`);
