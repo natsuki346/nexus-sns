@@ -112,6 +112,27 @@
             border-radius: 50%;
             margin-right: 4px;
         }
+        .mbti-badge {
+            background: #e0d4ff;
+            color: #7c3aed;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-left: 4px;
+        }
+        .post-type-badge {
+            background: #fecaca;
+            color: #991b1b;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .post-type-badge.business {
+            background: #a7f3d0;
+            color: #065f46;
+        }
     </style>
 </head>
 <body>
@@ -125,17 +146,22 @@
             const [users, setUsers] = useState([]);
             const [posts, setPosts] = useState([]);
             const [messages, setMessages] = useState([]);
+            const [groupChats, setGroupChats] = useState([]);
             const [locations, setLocations] = useState([]);
             const [places, setPlaces] = useState([]);
             const [currentUserId] = useState('user1');
             const [activeTab, setActiveTab] = useState('posts');
+            const [messengerMode, setMessengerMode] = useState('dm');
             const [feedType, setFeedType] = useState('recommend');
             const [selectedTalk, setSelectedTalk] = useState(null);
+            const [selectedGroupChat, setSelectedGroupChat] = useState(null);
             const [selectedProfile, setSelectedProfile] = useState(null);
             const [newPostContent, setNewPostContent] = useState('');
             const [newMessageContent, setNewMessageContent] = useState('');
+            const [newGroupChatName, setNewGroupChatName] = useState('');
             const [searchQuery, setSearchQuery] = useState('');
             const [selectedLocation, setSelectedLocation] = useState(null);
+            const [mbtiFilter, setMbtiFilter] = useState('all');
             const [loading, setLoading] = useState(true);
             const messagesEndRef = useRef(null);
 
@@ -147,7 +173,7 @@
 
             useEffect(() => {
                 scrollToBottom();
-            }, [messages, selectedTalk]);
+            }, [messages, selectedTalk, groupChats, selectedGroupChat]);
 
             const scrollToBottom = () => {
                 messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -155,21 +181,24 @@
 
             const fetchData = async () => {
                 try {
-                    const [usersRes, postsRes, messagesRes, locationsRes] = await Promise.all([
+                    const [usersRes, postsRes, messagesRes, groupChatsRes, locationsRes] = await Promise.all([
                         fetch(`${API_BASE}/api/users`),
                         fetch(`${API_BASE}/api/posts`),
                         fetch(`${API_BASE}/api/messages`),
+                        fetch(`${API_BASE}/api/groupchats`),
                         fetch(`${API_BASE}/api/locations`)
                     ]);
 
                     const usersData = await usersRes.json();
                     const postsData = await postsRes.json();
                     const messagesData = await messagesRes.json();
+                    const groupChatsData = await groupChatsRes.json();
                     const locationsData = await locationsRes.json();
 
                     setUsers(usersData);
                     setPosts(postsData);
                     setMessages(messagesData);
+                    setGroupChats(groupChatsData);
                     setLocations(locationsData);
                     setLoading(false);
                 } catch (error) {
@@ -195,6 +224,12 @@
 
             const getUnreadDMCount = () => {
                 return messages.filter(m => m.recipientId === currentUserId && !m.isRead).length;
+            };
+
+            const getUnreadGroupCount = () => {
+                return groupChats.reduce((count, gc) => {
+                    return count + gc.messages.filter(m => m.recipientId === currentUserId && !m.isRead).length;
+                }, 0);
             };
 
             const getTalks = () => {
@@ -223,6 +258,11 @@
                 ).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
             };
 
+            const getGroupChatMessages = (groupChatId) => {
+                const groupChat = groupChats.find(g => g.id === groupChatId);
+                return groupChat ? groupChat.messages : [];
+            };
+
             const getSearchResults = () => {
                 const query = searchQuery.toLowerCase();
                 return posts.filter(post => {
@@ -236,6 +276,21 @@
                 });
             };
 
+            const getFilteredPostsByMBTI = () => {
+                const filtered = mbtiFilter === 'all' 
+                    ? posts 
+                    : posts.filter(p => {
+                        const author = getPostAuthor(p);
+                        return author?.mbti === mbtiFilter;
+                    });
+                
+                if (feedType === 'following') {
+                    const followingIds = getCurrentUser()?.following || [];
+                    return filtered.filter(p => followingIds.includes(p.authorId));
+                }
+                return filtered;
+            };
+
             const handleAddPost = async () => {
                 if (newPostContent.trim()) {
                     try {
@@ -246,7 +301,8 @@
                             body: JSON.stringify({ 
                                 authorId: currentUserId, 
                                 content: newPostContent,
-                                location: currentUser?.location
+                                location: currentUser?.location,
+                                postType: 'personal'
                             })
                         });
                         const newPost = await response.json();
@@ -312,6 +368,48 @@
                 }
             };
 
+            const handleSendGroupMessage = async (groupChatId) => {
+                if (newMessageContent.trim()) {
+                    try {
+                        const response = await fetch(`${API_BASE}/api/groupchats/${groupChatId}/messages`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ senderId: currentUserId, content: newMessageContent })
+                        });
+                        const newMsg = await response.json();
+                        setGroupChats(groupChats.map(gc => 
+                            gc.id === groupChatId 
+                                ? { ...gc, messages: [...gc.messages, newMsg] }
+                                : gc
+                        ));
+                        setNewMessageContent('');
+                        setTimeout(scrollToBottom, 100);
+                    } catch (error) {
+                        console.error('Failed to send group message:', error);
+                    }
+                }
+            };
+
+            const handleCreateGroupChat = async () => {
+                if (newGroupChatName.trim()) {
+                    try {
+                        const response = await fetch(`${API_BASE}/api/groupchats`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                name: newGroupChatName,
+                                members: [currentUserId]
+                            })
+                        });
+                        const newGroupChat = await response.json();
+                        setGroupChats([...groupChats, newGroupChat]);
+                        setNewGroupChatName('');
+                    } catch (error) {
+                        console.error('Failed to create group chat:', error);
+                    }
+                }
+            };
+
             const handleMarkAsRead = (participantId) => {
                 setMessages(messages.map(m => {
                     if (m.recipientId === currentUserId && m.senderId === participantId && !m.isRead) {
@@ -319,17 +417,6 @@
                     }
                     return m;
                 }));
-            };
-
-            const getFilteredPosts = () => {
-                let filtered = posts;
-                
-                if (feedType === 'following') {
-                    const followingIds = getCurrentUser()?.following || [];
-                    filtered = filtered.filter(p => followingIds.includes(p.authorId));
-                }
-                
-                return filtered;
             };
 
             const formatTime = (timestamp) => {
@@ -361,436 +448,5 @@
             const currentUser = getCurrentUser();
             if (!currentUser) return <div className="text-center p-8">ユーザーが見つかりません</div>;
 
-            const displayPosts = searchQuery ? getSearchResults() : getFilteredPosts();
+            const displayPosts = searchQuery ? getSearchResults() : getFilteredPostsByMBTI();
             const talks = getTalks();
-
-            const PostCard = ({ post }) => {
-                const author = getPostAuthor(post);
-                const isLiked = post.likes.includes(currentUserId);
-
-                return (
-                    <div className="nexus-card border-b hover:bg-blue-50 transition p-4">
-                        <div className="flex gap-3">
-                            <div className="text-3xl">{author?.avatar}</div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold hover:underline cursor-pointer text-gray-900" onClick={() => setSelectedProfile(author?.id)}>
-                                        {author?.name}
-                                    </span>
-                                    <span className="text-gray-500 text-sm">{author?.username}</span>
-                                    <span className="nexus-phase px-2 py-1 rounded text-xs font-bold">
-                                        {author?.phase}
-                                    </span>
-                                    <span className="text-gray-400 text-xs ml-auto">{formatTime(post.timestamp)}</span>
-                                </div>
-                                <p className="mt-3 text-gray-800 text-sm leading-relaxed">{post.content}</p>
-                                {post.location && (
-                                    <div className="mt-2 flex items-center text-sm text-blue-600 cursor-pointer hover:text-blue-700" onClick={() => fetchPlaces(post.location)}>
-                                        <span className="location-marker"></span>
-                                        📍 {post.location}
-                                    </div>
-                                )}
-                                {post.hashtags && post.hashtags.length > 0 && (
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {post.hashtags.map((tag, i) => (
-                                            <span key={i} className="nexus-tag text-sm">
-                                                {tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                <div className="flex items-center gap-6 mt-4 text-gray-500">
-                                    <button
-                                        onClick={() => handleToggleLike(post.id)}
-                                        className={`flex items-center gap-2 transition ${isLiked ? 'nexus-like' : 'hover:text-red-500'}`}
-                                    >
-                                        <span className="text-lg">{isLiked ? '❤️' : '🤍'}</span>
-                                        <span className={`text-sm font-bold ${isLiked ? 'nexus-like' : ''}`}>
-                                            {post.likeCount}
-                                        </span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            };
-
-            const DMTalkCard = ({ talk }) => {
-                const participant = getUserById(talk.participantId);
-                const unreadCount = getTalkMessages(talk.participantId).filter(m => m.recipientId === currentUserId && !m.isRead).length;
-
-                return (
-                    <div
-                        onClick={() => {
-                            setSelectedTalk(talk.participantId);
-                            handleMarkAsRead(talk.participantId);
-                        }}
-                        className={`nexus-card border-b hover:bg-blue-50 cursor-pointer transition p-4 flex items-center justify-between ${unreadCount > 0 ? 'unread-indicator' : 'read-indicator'}`}
-                    >
-                        <div className="flex-1">
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">{participant?.avatar}</span>
-                                <div className="flex-1">
-                                    <div className="font-bold text-gray-900">{participant?.name}</div>
-                                    <div className="text-sm text-gray-600 truncate">{talk.lastMessage}</div>
-                                </div>
-                            </div>
-                        </div>
-                        {unreadCount > 0 && (
-                            <div className="nexus-notification rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold ml-3">
-                                {unreadCount}
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
-            const LocationCard = ({ location }) => (
-                <div 
-                    onClick={() => fetchPlaces(location.location)}
-                    className="nexus-card border-b hover:bg-blue-50 cursor-pointer transition p-4 flex items-center justify-between"
-                >
-                    <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                            <span className="text-2xl">{location.avatar}</span>
-                            <div className="flex-1">
-                                <div className="font-bold text-gray-900">{location.name}</div>
-                                <div className="text-sm text-blue-600 flex items-center">
-                                    <span className="location-marker"></span>
-                                    📍 {location.location}
-                                </div>
-                                <div className="nexus-phase inline-block px-2 py-1 rounded text-xs font-bold mt-1">
-                                    {location.phase}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-
-            const PlaceCard = ({ place }) => (
-                <div className="place-card rounded-lg p-4 mb-3">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h4 className="font-bold text-gray-900">{place.name}</h4>
-                            <p className="text-sm text-gray-600 mt-1">{place.type}</p>
-                            <div className="flex items-center gap-1 mt-2">
-                                <span className="text-yellow-400">★</span>
-                                <span className="text-sm font-bold text-gray-700">{place.rating}</span>
-                            </div>
-                        </div>
-                        <div className="coupon-badge rounded px-3 py-1 text-xs font-bold text-right">
-                            🎟️ {place.coupon}
-                        </div>
-                    </div>
-                </div>
-            );
-
-            const ProfileModal = ({ userId }) => {
-                const profile = getUserById(userId);
-                const isFollowing = currentUser?.following.includes(userId);
-                const isSelf = userId === currentUserId;
-
-                return (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="nexus-card rounded-lg p-8 max-w-md w-full mx-4">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="text-5xl">{profile?.avatar}</div>
-                                <button onClick={() => setSelectedProfile(null)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-900">{profile?.name}</h2>
-                            <p className="text-gray-600 text-sm">{profile?.username}</p>
-                            <div className="nexus-phase inline-block px-3 py-1 rounded text-xs font-bold mt-3">
-                                {profile?.phase}
-                            </div>
-                            <div className="flex items-center gap-2 mt-3 text-blue-600 text-sm">
-                                <span className="location-marker"></span>
-                                📍 {profile?.location}
-                            </div>
-                            <p className="mt-4 text-gray-700 text-sm">{profile?.bio}</p>
-                            <div className="flex gap-6 mt-6 text-sm">
-                                <div><span className="font-bold text-gray-900">{profile?.followers.length}</span> <span className="text-gray-600">フォロワー</span></div>
-                                <div><span className="font-bold text-gray-900">{profile?.following.length}</span> <span className="text-gray-600">フォロー中</span></div>
-                            </div>
-                            {!isSelf && (
-                                <div className="flex gap-2 mt-6">
-                                    <button
-                                        onClick={() => handleFollowToggle(userId)}
-                                        className={`flex-1 py-2 rounded font-bold transition ${
-                                            isFollowing
-                                                ? 'bg-gray-200 text-gray-900 hover:bg-gray-300'
-                                                : 'nexus-button'
-                                        }`}
-                                    >
-                                        {isFollowing ? 'フォロー中' : 'フォロー'}
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setSelectedProfile(null);
-                                            setSelectedTalk(userId);
-                                        }}
-                                        className="flex-1 nexus-button rounded font-bold"
-                                    >
-                                        DM送信
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-            };
-
-            const TalkDetailModal = ({ participantId }) => {
-                const participant = getUserById(participantId);
-                const talkMessages = getTalkMessages(participantId);
-
-                return (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="nexus-card rounded-lg w-full max-w-md h-screen md:h-auto md:max-h-96 flex flex-col">
-                            <div className="border-b border-gray-200 p-4 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-100">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-3xl">{participant?.avatar}</span>
-                                    <div>
-                                        <h3 className="font-bold text-gray-900">{participant?.name}</h3>
-                                        <p className="text-xs text-gray-500">{participant?.phase}</p>
-                                    </div>
-                                </div>
-                                <button onClick={() => setSelectedTalk(null)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
-                                {talkMessages.length === 0 ? (
-                                    <div className="flex items-center justify-center h-full text-gray-400">
-                                        <p>メッセージがまだありません</p>
-                                    </div>
-                                ) : (
-                                    talkMessages.map(msg => (
-                                        <div key={msg.id} className={`flex ${msg.senderId === currentUserId ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`message-bubble p-3 rounded-lg max-w-xs ${msg.senderId === currentUserId ? 'bg-gradient-to-r from-blue-400 to-blue-500 text-white' : 'bg-gray-100 text-gray-900'}`}>
-                                                <p className="text-sm">{msg.message}</p>
-                                                <p className="text-xs opacity-70 mt-1">
-                                                    {formatTime(msg.timestamp)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                                <div ref={messagesEndRef} />
-                            </div>
-
-                            <div className="border-t border-gray-200 p-4 flex gap-2 bg-gray-50">
-                                <input
-                                    type="text"
-                                    value={newMessageContent}
-                                    onChange={(e) => setNewMessageContent(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && newMessageContent.trim()) {
-                                            handleSendMessage(participantId);
-                                        }
-                                    }}
-                                    placeholder="返信を入力..."
-                                    className="nexus-input flex-1 rounded px-3 py-2"
-                                />
-                                <button
-                                    onClick={() => handleSendMessage(participantId)}
-                                    disabled={!newMessageContent.trim()}
-                                    className="nexus-button rounded px-4 py-2 font-bold disabled:opacity-50"
-                                >
-                                    送信
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            };
-
-            return (
-                <div className="h-screen nexus-bg flex flex-col">
-                    {/* ヘッダー */}
-                    <div className="border-b border-blue-200 sticky top-0 bg-white bg-opacity-95 backdrop-blur z-40 shadow-sm">
-                        <div className="max-w-3xl mx-auto px-4 py-4">
-                            <div className="flex items-center justify-between mb-4">
-                                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
-                                    NEXUS
-                                </h1>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setActiveTab('posts')}
-                                        className={`px-4 py-2 font-bold border-b-2 transition ${
-                                            activeTab === 'posts' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'
-                                        }`}
-                                    >
-                                        投稿
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('dms')}
-                                        className={`px-4 py-2 font-bold border-b-2 transition relative ${
-                                            activeTab === 'dms' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'
-                                        }`}
-                                    >
-                                        DM
-                                        {getUnreadDMCount() > 0 && (
-                                            <span className="nexus-notification rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold absolute -top-1 -right-2">
-                                                {getUnreadDMCount()}
-                                            </span>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('locations')}
-                                        className={`px-4 py-2 font-bold border-b-2 transition ${
-                                            activeTab === 'locations' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'
-                                        }`}
-                                    >
-                                        位置情報
-                                    </button>
-                                </div>
-                                <div className="text-2xl">{currentUser?.avatar}</div>
-                            </div>
-
-                            {/* 検索バー */}
-                            {activeTab === 'posts' && (
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="🔍 投稿、ユーザー、ハッシュタグを検索..."
-                                        className="nexus-input w-full rounded-full px-4 py-2 text-sm"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* メインコンテンツ */}
-                    <div className="flex-1 overflow-y-auto max-w-3xl mx-auto w-full">
-                        {activeTab === 'posts' && (
-                            <>
-                                {/* 投稿作成 */}
-                                <div className="nexus-card border-b p-4 m-4 rounded-lg shadow-sm">
-                                    <div className="flex gap-3">
-                                        <div className="text-3xl">{currentUser?.avatar}</div>
-                                        <div className="flex-1">
-                                            <textarea
-                                                value={newPostContent}
-                                                onChange={(e) => setNewPostContent(e.target.value)}
-                                                placeholder="何か新しいつながりを作ろう！"
-                                                className="nexus-input w-full rounded-lg p-3 resize-none"
-                                                rows="3"
-                                            />
-                                            <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
-                                                <span className="location-marker"></span>
-                                                📍 {currentUser?.location}
-                                            </div>
-                                            <button
-                                                onClick={handleAddPost}
-                                                disabled={!newPostContent.trim()}
-                                                className="nexus-button mt-3 px-6 py-2 rounded-full font-bold"
-                                            >
-                                                投稿する
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* フィードタブ */}
-                                {!searchQuery && (
-                                    <div className="nexus-card border-b flex sticky top-16 bg-white bg-opacity-95 z-30">
-                                        <button
-                                            onClick={() => setFeedType('recommend')}
-                                            className={`flex-1 px-4 py-3 font-bold border-b-2 transition ${
-                                                feedType === 'recommend' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'
-                                            }`}
-                                        >
-                                            おすすめ
-                                        </button>
-                                        <button
-                                            onClick={() => setFeedType('following')}
-                                            className={`flex-1 px-4 py-3 font-bold border-b-2 transition ${
-                                                feedType === 'following' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'
-                                            }`}
-                                        >
-                                            フォロー中
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* 投稿フィード */}
-                                <div className="p-4">
-                                    {displayPosts.length > 0 ? (
-                                        displayPosts.map(post => <PostCard key={post.id} post={post} />)
-                                    ) : (
-                                        <div className="p-8 text-center text-gray-500 nexus-card rounded-lg">
-                                            {searchQuery ? '検索結果がありません' : '投稿がありません'}
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
-
-                        {activeTab === 'dms' && (
-                            <div className="p-4">
-                                {talks.length > 0 ? (
-                                    talks.map(talk => <DMTalkCard key={talk.participantId} talk={talk} />)
-                                ) : (
-                                    <div className="p-8 text-center text-gray-500 nexus-card rounded-lg">
-                                        DMがありません
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === 'locations' && (
-                            <div className="p-4">
-                                {!selectedLocation ? (
-                                    <>
-                                        <div className="mb-4">
-                                            <h3 className="text-lg font-bold text-gray-900 mb-3">📍 近くの仲間</h3>
-                                            {locations.length > 0 ? (
-                                                locations.map(location => <LocationCard key={location.id} location={location} />)
-                                            ) : (
-                                                <div className="p-8 text-center text-gray-500 nexus-card rounded-lg">
-                                                    位置情報がありません
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedLocation(null);
-                                                setPlaces([]);
-                                            }}
-                                            className="mb-4 px-4 py-2 nexus-button rounded font-bold text-sm"
-                                        >
-                                            ← 戻る
-                                        </button>
-                                        <h3 className="text-lg font-bold text-gray-900 mb-3">
-                                            📍 {selectedLocation} のおすすめスポット
-                                        </h3>
-                                        {places.length > 0 ? (
-                                            places.map((place, i) => <PlaceCard key={i} place={place} />)
-                                        ) : (
-                                            <div className="p-8 text-center text-gray-500 nexus-card rounded-lg">
-                                                この場所にはおすすめスポットがありません
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* モーダル */}
-                    {selectedProfile && <ProfileModal userId={selectedProfile} />}
-                    {selectedTalk && <TalkDetailModal participantId={selectedTalk} />}
-                </div>
-            );
-        }
-
-        ReactDOM.render(<NEXUS />, document.getElementById('root'));
-    </script>
-</body>
-</html>
