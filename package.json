@@ -1,0 +1,15 @@
+{
+  "name": "nexus-sns",
+  "version": "1.0.0",
+  "description": "NEXUS - 挑戦者特化型SNS with Claude API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "@anthropic-ai/sdk": "^0.24.3",
+    "dotenv": "^16.3.1"
+  }
+}
