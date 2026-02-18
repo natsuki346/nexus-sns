@@ -71,12 +71,32 @@
         .nexus-like {
             color: #ef4444;
         }
+        .message-bubble {
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .unread-indicator {
+            background: #dbeafe;
+            border-left: 3px solid #3b82f6;
+        }
+        .read-indicator {
+            opacity: 0.6;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         const API_BASE = '';
 
@@ -93,10 +113,23 @@
             const [newMessageContent, setNewMessageContent] = useState('');
             const [searchQuery, setSearchQuery] = useState('');
             const [loading, setLoading] = useState(true);
+            const messagesEndRef = useRef(null);
 
             useEffect(() => {
                 fetchData();
+                // 3秒ごとにメッセージを更新（リアルタイム風）
+                const interval = setInterval(fetchData, 3000);
+                return () => clearInterval(interval);
             }, []);
+
+            useEffect(() => {
+                // メッセージ追加時に自動スクロール
+                scrollToBottom();
+            }, [messages, selectedTalk]);
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            };
 
             const fetchData = async () => {
                 try {
@@ -231,6 +264,8 @@
                         const newMsg = await response.json();
                         setMessages([...messages, newMsg]);
                         setNewMessageContent('');
+                        // メッセージ送信後、自動スクロール
+                        setTimeout(scrollToBottom, 100);
                     } catch (error) {
                         console.error('Failed to send message:', error);
                     }
@@ -345,7 +380,7 @@
                             setSelectedTalk(talk.participantId);
                             handleMarkAsRead(talk.participantId);
                         }}
-                        className="nexus-card border-b hover:bg-blue-50 cursor-pointer transition p-4 flex items-center justify-between"
+                        className={`nexus-card border-b hover:bg-blue-50 cursor-pointer transition p-4 flex items-center justify-between ${unreadCount > 0 ? 'unread-indicator' : 'read-indicator'}`}
                     >
                         <div className="flex-1">
                             <div className="flex items-center gap-3">
@@ -425,20 +460,37 @@
                             <div className="border-b border-gray-200 p-4 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-3xl">{participant?.avatar}</span>
-                                    <h3 className="font-bold text-gray-900">{participant?.name}</h3>
+                                    <div>
+                                        <h3 className="font-bold text-gray-900">{participant?.name}</h3>
+                                        <p className="text-xs text-gray-500">{participant?.phase}</p>
+                                    </div>
                                 </div>
                                 <button onClick={() => setSelectedTalk(null)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
-                                {talkMessages.map(msg => (
-                                    <div key={msg.id} className={`flex ${msg.senderId === currentUserId ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`p-3 rounded-lg max-w-xs ${msg.senderId === currentUserId ? 'bg-gradient-to-r from-blue-400 to-blue-500 text-white' : 'bg-gray-100 text-gray-900'}`}>
-                                            <p className="text-sm">{msg.message}</p>
-                                            <p className="text-xs opacity-70 mt-1">{formatTime(msg.timestamp)}</p>
-                                        </div>
+                                {talkMessages.length === 0 ? (
+                                    <div className="flex items-center justify-center h-full text-gray-400">
+                                        <p>メッセージがまだありません</p>
                                     </div>
-                                ))}
+                                ) : (
+                                    talkMessages.map(msg => (
+                                        <div key={msg.id} className={`flex ${msg.senderId === currentUserId ? 'justify-end' : 'justify-start'}`}>
+                                            <div className={`message-bubble p-3 rounded-lg max-w-xs ${msg.senderId === currentUserId ? 'bg-gradient-to-r from-blue-400 to-blue-500 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                                                <p className="text-sm">{msg.message}</p>
+                                                <p className="text-xs opacity-70 mt-1 flex items-center gap-1">
+                                                    {formatTime(msg.timestamp)}
+                                                    {msg.senderId !== currentUserId && (
+                                                        <span className="ml-auto">
+                                                            {msg.isRead ? '✓✓' : '✓'}
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                                <div ref={messagesEndRef} />
                             </div>
 
                             <div className="border-t border-gray-200 p-4 flex gap-2 bg-gray-50">
@@ -447,16 +499,17 @@
                                     value={newMessageContent}
                                     onChange={(e) => setNewMessageContent(e.target.value)}
                                     onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
+                                        if (e.key === 'Enter' && newMessageContent.trim()) {
                                             handleSendMessage(participantId);
                                         }
                                     }}
-                                    placeholder="メッセージを入力..."
+                                    placeholder="返信を入力..."
                                     className="nexus-input flex-1 rounded px-3 py-2"
                                 />
                                 <button
                                     onClick={() => handleSendMessage(participantId)}
-                                    className="nexus-button rounded px-4 py-2 font-bold"
+                                    disabled={!newMessageContent.trim()}
+                                    className="nexus-button rounded px-4 py-2 font-bold disabled:opacity-50"
                                 >
                                     送信
                                 </button>
